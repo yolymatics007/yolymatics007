@@ -1,0 +1,119 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from classy import Class
+
+def calculate_and_plot_HI_power_spectrum(z):
+    # Initialize the CLASS instance
+    cosmo = Class()
+
+    # Define the cosmological parameters
+    params = {
+        'output': 'mPk',           # Request matter power spectrum calculation
+        'omega_b': 0.0223828,      # Baryon density
+        'omega_cdm': 0.1201075,    # Cold Dark Matter density
+        'h': 0.6736,               # Hubble parameter
+        'A_s': 2.1e-9,             # Amplitude of primordial power spectrum
+        'n_s': 0.9665,             # Spectral index of primordial power spectrum
+        'tau_reio': 0.0543,        # Optical depth to reionization
+        'Omega_Lambda': 0.6825,    # Present-day density parameter for dark energy
+        'Omega_k': 0.0,            # Present-day density parameter for curvature
+        'z_max_pk': z,             # Maximum redshift for storing power spectrum
+        # Add more parameters as needed
+    }
+
+    # Set the cosmological parameters
+    cosmo.set(params)
+
+    # Define 'h' based on the provided Hubble parameter
+    h = params['h']
+
+    # Some functions we are going to need
+    def hubble_function_class(z, H0, Omega_b, Omega_cdm, Omega_lambda, Omega_k):
+        term1 = Omega_b * (1 + z)**3
+        term2 = Omega_cdm * (1 + z)**3
+        term3 = Omega_lambda
+        term4 = Omega_k * (1 + z)**2
+        H_z = H0 * np.sqrt(term1 + term2 + term3 + term4)
+        
+        return H_z
+        
+
+    def b(z):
+        return 0.842 + 0.693*z - 0.046*z**2 
+
+    def Omega(z):
+        return 0.00048 + 0.00039*z - 0.000065*z**2
+
+    def T(z):
+        return 180*Omega(z)*h*((1+z)**2)/(hubble_function_class(z, h, params['omega_b'], params['omega_cdm'], params['Omega_Lambda'], params['Omega_k'])/h)
+
+
+    def B_beam(k_perp, R_beam=20):
+        return np.exp(-0.5*(k_perp**2) * (R_beam**2))
+
+    def B_fg(k_para, k_para_fg=5e-3):
+        return 1.0 - np.exp(-(k_para / k_para_fg)**2)
+
+    # Specify the values of k_perp and k_parallel
+    k_perp = np.logspace(-3, -1, 100)
+    k_para = np.logspace(-3, -1, 100)
+
+    # Create a meshgrid of k_perp and k_parallel
+    k_perp_mesh, k_para_mesh = np.meshgrid(k_perp, k_para)
+
+    # Calculate the matter power spectrum at the specified k values
+    cosmo.compute()
+    pk_values_HI = np.zeros_like(k_perp_mesh)
+    pk_values_HI_B_beam = np.zeros_like(k_perp_mesh)
+    pk_values_HI_B_fg = np.zeros_like(k_perp_mesh)
+
+    for i in range(len(k_perp)):
+        for j in range(len(k_para)):
+            k = np.sqrt(k_perp[i]**2 + k_para[j]**2)
+            mu = k_para[j] / k  # Calculate mu
+            omega_m_z = params['omega_b'] * (1 + z)**3 + params['omega_cdm'] * (1 + z)**3
+            growth_rate = omega_m_z**0.55  # Linear growth rate
+            pk_values_HI[i, j] = T(z)**2 * (b(z))**2 * cosmo.pk(k, z)
+            pk_values_HI_B_beam[i, j] = pk_values_HI[i, j] * B_beam(k_perp[j])
+            pk_values_HI_B_fg[i, j] = pk_values_HI[i, j] * B_fg(k_para[j])
+
+    # Plot the HI power spectra
+    plt.figure(figsize=(14, 4))
+    plt.subplot(131)
+    plt.pcolormesh(k_perp_mesh, k_para_mesh, np.log10(pk_values_HI), cmap='inferno')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.colorbar(label='log10(P_HI(k, mu, z)) (Mpc/h)^3')
+    plt.xlabel(r'$k_{\perp}$ (h/Mpc)')
+    plt.ylabel(r'$k_{\parallel}$ (h/Mpc)')
+    plt.title(f'HI Only at z={z}')
+    
+    plt.subplot(132)
+    plt.pcolormesh(k_perp_mesh, k_para_mesh, np.log10(pk_values_HI_B_fg), cmap='inferno')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.colorbar(label='log10(P_HI * B_fg(k, mu, z)) (Mpc/h)^3')
+    plt.xlabel(r'$k_{\perp}$ (h/Mpc)')
+    plt.ylabel(r'$k_{\parallel}$ (h/Mpc)')
+    plt.title(f'HI + FGs at z={z}')
+
+    plt.subplot(133)
+    plt.pcolormesh(k_perp_mesh, k_para_mesh, np.log10(pk_values_HI_B_beam), cmap='inferno')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.colorbar(label='log10(P_HI * B_beam(k, mu, z)) (Mpc/h)^3')
+    plt.xlabel(r'$k_{\perp}$ (h/Mpc)')
+    plt.ylabel(r'$k_{\parallel}$ (h/Mpc)')
+    plt.title(f'HI + Beam at z={z}')
+
+    
+
+    plt.tight_layout()
+    plt.show()
+
+    # Clean up the CLASS instance
+    cosmo.struct_cleanup()
+
+# Example usage:
+z_value = 1.0  # You can change this to any redshift you want
+calculate_and_plot_HI_power_spectrum(z_value)
